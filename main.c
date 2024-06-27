@@ -16,6 +16,7 @@
 #define ECHO_PIN GPIO_PIN_1 // PM1
 
 uint32_t SysClock;
+uint32_t distance;
 
 void PortM_Init(void) {
     // Habilita o port M
@@ -45,8 +46,8 @@ void delayMicroseconds(uint32_t us) {
     SysCtlDelay(delay);
 }
 
-uint32_t MeasureDistance(void) {
-    uint32_t duration, distance;
+void MeasureDistance(void) {
+    uint32_t duration;
     
     // Envia um pulso de 10us no pino TRIG
     GPIOPinWrite(GPIO_PORTM_BASE, TRIG_PIN, TRIG_PIN);
@@ -68,9 +69,9 @@ uint32_t MeasureDistance(void) {
     TimerDisable(TIMER0_BASE, TIMER_A);
     
     // Calcula a dist�ncia em cent�metros
-    distance = (duration / 2) / 29.1;
-    
-    return distance;
+    distance = (duration * 34300) / (2 * 1000000);
+    // Adiciona um pequeno atraso antes da pr�xima medi��o
+    SysCtlDelay(SysClock/5); // 1 segundo
 }
 
 int main(void) {
@@ -84,18 +85,18 @@ int main(void) {
     Timer0_Init();
 	SetupUart(SysClock);
     
+    osKernelInitialize();
     char string[60];
 
     while(1) {
         // Mede a dist�ncia
-        distance = MeasureDistance();
+        osThreadNew(MeasureDistance, NULL, NULL);
         
         // Escreve a dist�ncia na UART
         snprintf(string, sizeof(string), "distance: %d \r\n", distance);
         UARTSendString(string);
-        
-        // Adiciona um pequeno atraso antes da pr�xima medi��o
-        SysCtlDelay(SysClock/5); // 1 segundo
+    
+        osKernelStart();
     }
 
     return 0;
