@@ -1,9 +1,10 @@
 --cpu=Cortex-M4.fp.sp
 ".\objects\main.o"
-".\objects\movement.o"
 ".\objects\uart.o"
+".\objects\movement.o"
+".\objects\servo.o"
 "C:\ti\TivaWare_C_Series-2.2.0.295\driverlib\rvmdk\driverlib.lib"
-"C:\Users\mathb\AppData\Local\Arm\Packs\ARM\CMSIS\5.8.0\CMSIS\RTOS2\RTX\Library\ARM\RTX_CM4F.lib"
+"..\..\AppData\Local\Arm\Packs\ARM\CMSIS\5.9.0\CMSIS\RTOS2\RTX\Library\ARM\RTX_CM4F.lib"
 ".\objects\rtx_lib.o"
 ".\objects\rtx_config.o"
 ".\objects\startup_tm4c129.o"
