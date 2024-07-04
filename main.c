@@ -13,14 +13,15 @@
 #include "driverlib/uart.h"
 #include "utils/uartstdio.h"
 
+#include "src/global_variables.h"
 #include "src/movement/movement.h"
 #include "src/uart/uart.h"
 #include "src/servo/servo.h"
+
 // Defini��es dos pinos
 #define TRIG_PIN GPIO_PIN_0 // PM0
 #define ECHO_PIN GPIO_PIN_1 // PM1
 
-uint32_t SysClock;
 float distance;
 
 void PortM_Init(void) {
@@ -108,26 +109,31 @@ void MeasureDistance(void *argument) {
 //   return 0;
 // }
 
+uint32_t SysClock = 0;
+
 int main(void) {
     SysClock = SysCtlClockFreqSet((SYSCTL_XTAL_25MHZ | SYSCTL_OSC_MAIN | SYSCTL_USE_PLL | SYSCTL_CFG_VCO_240), 120000000);
     
-    servoInit(SysClock);
-    servoSetPosition(90);
-    while(1) {
-          servoSetPosition(90);
-        //  servoSetPosition(0);
-        //  delayMicroseconds(1000);
-        //  servoSetPosition(45);
-        //  delayMicroseconds(1000);
-        //  servoSetPosition(90);
-        //  delayMicroseconds(1000);
-        //  servoSetPosition(135);
-        //  delayMicroseconds(1000);
-        //  servoSetPosition(180);
-        //  delayMicroseconds(1000);
-    }
+    servoSetup();
 
-    return 0;
-}        
+    while (1) {
+        servo0deg();
+        SysCtlDelay(SysClock);
+        servo45deg();
+        SysCtlDelay(SysClock);
+        servo90deg();
+        SysCtlDelay(SysClock);
+        servo135deg();
+        SysCtlDelay(SysClock);
+        servo180deg();
+        SysCtlDelay(SysClock);
+        servo135deg();
+        SysCtlDelay(SysClock);
+        servo90deg();
+        SysCtlDelay(SysClock);
+        servo45deg();
+        SysCtlDelay(SysClock);
+    }
+}
 
 

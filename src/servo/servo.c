@@ -1,87 +1,67 @@
 #include "servo.h"
+#include "../global_variables.h"
 
-#include <stdint.h>
-#include <stdbool.h>
+volatile uint32_t pulseWidth = 0;
+volatile bool pwmState = false;
 
-#include "inc/hw_memmap.h"
-#include "driverlib/sysctl.h"
-#include "driverlib/gpio.h"
-#include "driverlib/pwm.h"
-#include "driverlib/pin_map.h"
-#include "driverlib/timer.h"
-#include "driverlib/uart.h"
-#include "driverlib/interrupt.h"
+void Timer0IntHandler(void) {
+    TimerIntClear(TIMER0_BASE, TIMER_TIMA_TIMEOUT);
 
-// initialize the PWM module for servo control
-void servoInit(uint32_t SysClock) {
-    // Habiplita PWM e o port do PWM
+    uint32_t next_timer;
+
+    next_timer = pwmState ? (SysClock / 50 - SysClock * pulseWidth / 5000) : (SysClock * pulseWidth / 5000);
+
+    TimerLoadSet(TIMER0_BASE, TIMER_A, next_timer - 1);
+
+    pwmState = !pwmState;
+
+    if (pwmState) {
+        GPIOPinWrite(GPIO_PORTG_BASE, GPIO_PIN_1, GPIO_PIN_1);
+    } else {
+        GPIOPinWrite(GPIO_PORTG_BASE, GPIO_PIN_1, 0);
+    }
+}
+
+void servoSetup(void) {
+    SysCtlPeripheralEnable(SYSCTL_PERIPH_TIMER0);
+    while (!SysCtlPeripheralReady(SYSCTL_PERIPH_TIMER0));
+
+    TimerConfigure(TIMER0_BASE, TIMER_CFG_PERIODIC);
+    uint32_t timerPeriod = SysClock / 50;
+    TimerLoadSet(TIMER0_BASE, TIMER_A, timerPeriod - 1);
+    TimerIntEnable(TIMER0_BASE, TIMER_TIMA_TIMEOUT);
+    TimerIntRegister(TIMER0_BASE, TIMER_A, Timer0IntHandler);
+    TimerEnable(TIMER0_BASE, TIMER_A);
+
     SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOG);
-    SysCtlPeripheralEnable(SYSCTL_PERIPH_PWM0);
-    GPIOPinTypePWM(GPIO_PORTG_BASE, GPIO_PIN_1);
-    GPIOPinConfigure(GPIO_PG1_M0PWM5);
-    // Configura o clock do PWM 
-    SysCtlPWMClockSet(SYSCTL_PWMDIV_2); 
-
-    // Configura gerador PWM
-    uint32_t pwmPeriod = (SysClock/1) / PWM_FREQUENCY;  // Adjust clock division here
-    PWMGenConfigure(PWM0_BASE, PWM_GEN_2, PWM_GEN_MODE_DOWN);
-    PWMGenPeriodSet(PWM0_BASE, PWM_GEN_2, pwmPeriod);
-
-    PWMOutputState(PWM0_BASE, PWM_OUT_5_BIT, true);
-    PWMGenEnable(PWM0_BASE, PWM_GEN_2);
-
+    while (!SysCtlPeripheralReady(SYSCTL_PERIPH_GPIOG));
+    GPIOPinTypeGPIOOutput(GPIO_PORTG_BASE, GPIO_PIN_1);
 }
 
-// sets the servo position (in degrees)
-void servoSetPosition(uint8_t angle) {
-    uint32_t dutyCyclePercentage = (angle * 100) / 180 ;
-	if (dutyCyclePercentage == 0) {
-		PWMGenDisable(PWM0_BASE, PWM_GEN_2); // Disable PWM
-	}
-	else {
-		PWMGenEnable(PWM0_BASE, PWM_GEN_2); // Enable PWM
-		dutyCyclePercentage = dutyCyclePercentage > 100 ? 100 : dutyCyclePercentage;
-
-		uint32_t pwmPeriod = PWMGenPeriodGet(PWM0_BASE, PWM_GEN_2);
-		uint32_t pulseWidth = (pwmPeriod * dutyCyclePercentage) / 100;
-
-		// Set the new pulse width
-		PWMPulseWidthSet(PWM0_BASE, PWM_OUT_5, pulseWidth);
-	}
+void servo0deg(void){
+    pulseWidth = 2;
 }
 
+void servo45deg(void){
+    pulseWidth = 4;
+}
 
+void servo90deg(void){
+    pulseWidth = 6;
+}
 
-// // initialize the PWM module for servo control
-// void Servo_Init(void) {
-//     SYSCTL_RCGCGPIO_R |= SYSCTL_RCGCGPIO_R4;
-//     while ((SYSCTL_RCGCGPIO_R & SYSCTL_RCGCGPIO_R4) == 0) {}
+void servo135deg(void){
+    pulseWidth = 8;
+}
 
-//     SYSCTL_RCGCTIMER_R |= SYSCTL_RCGCTIMER_0;
-//     while ((SYSCTL_RCGCTIMER_R & SYSCTL_RCGCTIMER_0) == 0) {}
+void servo180deg(void){
+    pulseWidth = 10;
+}
 
-//     GPIOPinTypePWM(GPIO_PORTE_BASE, SERVO_PWM_PIN);
-//     GPIOPinConfigure(GPIO_PORTE_BASE, SERVO_PWM_PIN, GPIO_PCC_PE5_M0PWM4);
+void disableServo(void) {
+	TimerDisable(TIMER0_BASE, TIMER_A);
+}
 
-//     TimerConfigure(SERVO_PWM_MODULE, TIMER_CFG_MODE_PWM);
-//     TimerControl(SERVO_PWM_MODULE, TIMER_CTL_SRSYNC, TIMER_CTRL_SRSYNC_SYS_CLK);
-
-//     TimerControl(SERVO_PWM_MODULE, TIMER_CTL_TAMR, TIMER_TAMR_TAMR_1SHOT | TIMER_TAMR_TACDIR);
-//     TimerControl(SERVO_PWM_MODULE, TIMER_CTL_TCMR, TIMER_CTL_TCMR_ON_CASCADE);
-
-//     TimerLoadSet(SERVO_PWM_MODULE, TIMER_A, (120000000 / 5000) - 1);
-//     TimerIntDisable(SERVO_PWM_MODULE, TIMER_IMR_CAE);
-//     TimerEnable(SERVO_PWM_MODULE, TIMER_CTL_TEn);
-
-//     TimerControl(SERVO_PWM_MODULE, TIMER_CTL_CC2D, 0);
-//     TimerMatchSet(SERVO_PWM_MODULE, TIMER_A, TIMER_MATCH_B, (TimerLoadValueGet(SERVO_PWM_MODULE, TIMER_A) / 2) + 1);
-
-//     TimerControl(SERVO_PWM_MODULE, TIMER_CTL_OUTPUT, TIMER_CTL_OUTPUT_M0PWM4);
-// }
-
-// // sets the servo position (in degrees)
-// void Servo_SetPosition(uint8_t angle) {
-//     uint16_t pulse_width = SERVO_MIN_PULSE_WIDTH + (angle * (SERVO_MAX_PULSE_WIDTH - SERVO_MIN_PULSE_WIDTH)) / 180;
-
-//     TimerMatchSet(SERVO_PWM_MODULE, TIMER_A, TIMER_MATCH_B, pulse_width);
-// }
+void enableServo(void) {
+	TimerEnable(TIMER0_BASE, TIMER_A);
+}
