@@ -2,7 +2,6 @@
 
 #include <stdint.h>
 #include <stdbool.h>
-#include <stdio.h>
 
 #include "inc/hw_memmap.h"
 #include "driverlib/sysctl.h"

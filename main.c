@@ -2,9 +2,9 @@
 #include <stdbool.h>
 #include <stdio.h>
 
-#include "cmsis_os2.h"
 #include "inc/hw_memmap.h"
 #include "inc/hw_types.h"
+#include "inc/hw_gpio.h"
 #include "driverlib/sysctl.h"
 #include "driverlib/gpio.h"
 #include "driverlib/timer.h"
@@ -12,128 +12,150 @@
 #include "driverlib/pin_map.h"
 #include "driverlib/uart.h"
 #include "utils/uartstdio.h"
+#include "inc/hw_ints.h"
+#include "cmsis_os2.h"
 
-#include "src/global_variables.h"
-#include "src/movement/movement.h"
 #include "src/uart/uart.h"
+#include "src/global_variables.h"
+#include "src/hcsr04/hcsr04.h"
+#include "src/movement/movement.h"
 #include "src/servo/servo.h"
 
-// Defini��es dos pinos
-#define TRIG_PIN GPIO_PIN_0 // PM0
-#define ECHO_PIN GPIO_PIN_1 // PM1
-
-float distance;
-
-void PortM_Init(void) {
-    // Habilita o port M
-    SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOM);
-    
-    // Espera at� que o port M esteja pronto
-    while(!SysCtlPeripheralReady(SYSCTL_PERIPH_GPIOM));
-    
-    // Configura o pino TRIG como sa�da
-    GPIOPinTypeGPIOOutput(GPIO_PORTM_BASE, TRIG_PIN);
-    
-    // Configura o pino ECHO como entrada
-    GPIOPinTypeGPIOInput(GPIO_PORTM_BASE, ECHO_PIN);
-}
-
-void Timer0_Init(void) {
-    // Habilita o Timer 0
-    SysCtlPeripheralEnable(SYSCTL_PERIPH_TIMER0);
-    
-    // Configura o Timer 0 como temporizador de 32 bits em modo peri�dico
-    TimerConfigure(TIMER0_BASE, TIMER_CFG_PERIODIC_UP);
-}
-
-void delayMicroseconds(uint32_t us) {
-    // Calcula o n�mero de ciclos de clock para o atraso desejado
-    uint32_t delay = (SysClock) / us;
-    SysCtlDelay(delay);
-}
-
-void MeasureDistance(void *argument) {
-	while(true) {
-    uint32_t duration;
-    
-    // Envia um pulso de 10us no pino TRIG
-    GPIOPinWrite(GPIO_PORTM_BASE, TRIG_PIN, TRIG_PIN);
-    delayMicroseconds(12000000);
-    GPIOPinWrite(GPIO_PORTM_BASE, TRIG_PIN, 0);
-    
-    // Espera pelo in�cio do pulso no pino ECHO
-    while(GPIOPinRead(GPIO_PORTM_BASE, ECHO_PIN) == 0);
-    
-    // Inicia o timer
-    TimerLoadSet(TIMER0_BASE, TIMER_A, 0xFFFFFFFF);
-    TimerEnable(TIMER0_BASE, TIMER_A);
-    
-    // Espera pelo fim do pulso no pino ECHO
-    while(GPIOPinRead(GPIO_PORTM_BASE, ECHO_PIN) != 0);
-    
-    // Para o timer
-    duration = TimerValueGet(TIMER0_BASE, TIMER_A);
-    TimerDisable(TIMER0_BASE, TIMER_A);
-    
-    // Calcula a dist�ncia em cent�metros
-    distance = duration;
-    // Adiciona um pequeno atraso antes da pr�xima medi��o
-    SysCtlDelay(SysClock/50); // 1 segundo
-	}
-}
-
-// int main(void) {
-//     uint32_t distance;
-    
-//     // Configura a velocidade do sistema
-// 		SysClock = SysCtlClockFreqSet((SYSCTL_XTAL_25MHZ | SYSCTL_OSC_MAIN | SYSCTL_USE_PLL | SYSCTL_CFG_VCO_240), 120000000);
-    
-//     // Inicializa o port M, o Timer 0 e a UART0
-//     PortM_Init();
-//     Timer0_Init();
-// 		SetupUart(SysClock);
-    
-		
-//     //osKernelInitialize();
-//     char string[60];
-// 		//osThreadNew(MeasureDistance, NULL, NULL);
-	
-// 		//osKernelStart();
-//     while(1) {
-//         // Escreve a dist�ncia na UART
-//         snprintf(string, sizeof(string), "distance: %f \r\n", distance);
-//         UARTSendString(string);
-    
-
-//     }
-//   return 0;
-// }
-
 uint32_t SysClock = 0;
+#define MIN_DIST_TO_TURN 10
 
-int main(void) {
-    SysClock = SysCtlClockFreqSet((SYSCTL_XTAL_25MHZ | SYSCTL_OSC_MAIN | SYSCTL_USE_PLL | SYSCTL_CFG_VCO_240), 120000000);
-    
-    servoSetup();
+LookingDirection looking_directions[] = {L_LEFT, L_DIAGONAL_LEFT, L_FORWARD, L_DIAGONAL_RIGHT, L_RIGHT};
+MovementDirection movement_directions[] = {M_LEFT, M_DIAGONAL_LEFT, M_FORWARD, M_DIAGONAL_RIGHT, M_RIGHT};
+char *movement_directions_str[] = {"M_LEFT", "M_DIAGONAL_LEFT", "M_FORWARD", "M_DIAGONAL_RIGHT", "M_RIGHT"};
 
+osMessageQueueId_t distanceQueue;
+MovementDirection bestDir = M_BACKWARDS ;
+
+void ThreadMeasureDistanceAvg(void *argument) {
+    float average;
     while (1) {
-        servo0deg();
-        SysCtlDelay(SysClock);
-        servo45deg();
-        SysCtlDelay(SysClock);
-        servo90deg();
-        SysCtlDelay(SysClock);
-        servo135deg();
-        SysCtlDelay(SysClock);
-        servo180deg();
-        SysCtlDelay(SysClock);
-        servo135deg();
-        SysCtlDelay(SysClock);
-        servo90deg();
-        SysCtlDelay(SysClock);
-        servo45deg();
-        SysCtlDelay(SysClock);
+        average = 0;
+        for (int i = 0; i < 10; i++) {
+            Trigger_Ultrasonic();
+            average += Measure_Echo();
+            osDelay(50);
+        }
+        average /= 10;
+
+        // char string[32];
+        // snprintf(string, sizeof(string), "Distance: %.2f cm\r\n", average);
+        // UARTSendString(string);
+
+        osMessageQueuePut(distanceQueue, &average, 0, osWaitForever);
+
+        osDelay(100);
     }
 }
 
+void ThreadTurnAround(void *argument) {
+    while (1) {
+        // char string[32];
+        // snprintf(string, sizeof(string), "MOVING %d %s\r\n", (int)bestDir, movement_directions_str[bestDir]);
+        // UARTSendString(string);
+        switch (bestDir) {
+            case M_FORWARD:
+                moveForward();
+                osDelay(500);
+                break;
+            case M_BACKWARDS:
+                moveBackwards();
+                osDelay(500);
+                break;
+            case M_DIAGONAL_LEFT:
+                turnLeft();
+                osDelay(250);
+                break;
+            case M_LEFT:
+                turnLeft();
+                osDelay(500);
+                break;
+            case M_DIAGONAL_RIGHT:
+                turnRight();
+                osDelay(250);
+                break;
+            case M_RIGHT:
+                turnRight();
+                osDelay(500);
+                break;
+            default:
+                stop();
+                osDelay(500);
+                break;
+        }
 
+        osDelay(100);
+    }
+}
+
+void ThreadLookAround(void *argument) {
+    float distance;
+    float max_distance;
+
+    while (1) {
+        distance = 0;
+        bestDir = M_STOP;
+        max_distance = 0;
+
+        for (int i = 0; i < sizeof(looking_directions) / sizeof(looking_directions[0]); i++) {
+            turnServo(looking_directions[i]);
+            osDelay(300);
+            if (osMessageQueueGet(distanceQueue, &distance, NULL, osWaitForever) == osOK) {
+                if (distance > max_distance) {
+                    max_distance = distance;
+                    bestDir = movement_directions[i];
+                }
+            }
+        }
+
+        if (max_distance <= MIN_DIST_TO_TURN) {
+            bestDir = M_BACKWARDS;
+        }
+
+        osDelay(100); 
+
+        for (int i = sizeof(looking_directions) / sizeof(looking_directions[0]) - 1; i >= 0; i--) {
+            turnServo(looking_directions[i]);
+            osDelay(300);
+            if (osMessageQueueGet(distanceQueue, &distance, NULL, osWaitForever) == osOK) {
+                if (distance > max_distance) {
+                    max_distance = distance;
+                    bestDir = movement_directions[i];
+                }
+            }
+        }
+
+        if (max_distance <= MIN_DIST_TO_TURN) {
+            bestDir = M_BACKWARDS;
+        }
+
+        osDelay(100); 
+    }
+}
+
+int main(void) {
+    SysClock = SysCtlClockFreqSet((SYSCTL_XTAL_25MHZ | SYSCTL_OSC_MAIN | SYSCTL_USE_PLL | SYSCTL_CFG_VCO_240), 120000000);
+
+    initHCSR04();
+    //SetupUart(SysClock);
+    servoSetup();
+    movementInit();
+    
+    //UARTSendString("HELLO\r\n");
+
+    osKernelInitialize();
+
+    distanceQueue = osMessageQueueNew(10, sizeof(float), NULL);
+
+    osThreadNew(ThreadMeasureDistanceAvg, NULL, NULL);
+    osThreadNew(ThreadLookAround, NULL, NULL);
+    osThreadNew(ThreadTurnAround, NULL, NULL);
+
+    osKernelStart();
+
+    while (1) { }
+}

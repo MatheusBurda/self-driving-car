@@ -1,0 +1,144 @@
+#include <stdint.h>
+#include <stdbool.h>
+#include <stdio.h>
+#include "cmsis_os2.h"
+#include "inc/hw_memmap.h"
+#include "inc/hw_types.h"
+#include "inc/hw_gpio.h"
+#include "driverlib/sysctl.h"
+#include "driverlib/gpio.h"
+#include "driverlib/timer.h"
+#include "driverlib/interrupt.h"
+#include "driverlib/pin_map.h"
+#include "driverlib/uart.h"
+#include "utils/uartstdio.h"
+#include "inc/hw_ints.h"
+#include "src/uart/uart.h"
+#include "src/global_variables.h"
+#include "src/hcsr04/hcsr04.h"
+#include "src/movement/movement.h"
+#include "src/servo/servo.h"
+
+uint32_t SysClock = 0;
+
+#define MIN_DIST_TO_TURN 10
+
+LookingDirection looking_directions[] = {L_LEFT, L_DIAGONAL_LEFT, L_FORWARD, L_DIAGONAL_RIGHT, L_RIGHT};
+MovementDirection movement_directions[] = {M_LEFT, M_DIAGONAL_LEFT, M_FORWARD, M_DIAGONAL_RIGHT, M_RIGHT};
+char* movement_directions_str[] = {"M_LEFT", "M_DIAGONAL_LEFT", "M_FORWARD", "M_DIAGONAL_RIGHT", "M_RIGHT"};
+
+void ThreadTurnAround(enum MovementDirection best_dir) {
+    char string[32];
+    snprintf(string, sizeof(string), "MOVING %d %s\r\n", (int) best_dir, movement_directions_str[best_dir]);
+    UARTSendString(string);
+    
+    switch (best_dir) {
+
+    case M_BACKWARDS:
+        turnLeft();
+        delayMilliseconds(1000);
+        break;
+        
+    case M_DIAGONAL_LEFT:
+        turnLeft();
+        delayMilliseconds(500);
+        break; 
+    case M_LEFT:
+        turnLeft();
+        delayMilliseconds(1000);
+        break;
+    case M_DIAGONAL_RIGHT:
+        turnRight();
+        delayMilliseconds(500);
+        break; 
+    case M_RIGHT:
+        turnRight();
+        delayMilliseconds(1000);
+        break;
+    default:
+        stop();
+        delayMilliseconds(500);
+        break;
+    }
+    stop();
+    delayMilliseconds(100);
+    //-l, moveForward();
+    // delayMilliseconds(500);
+    // stop();
+    // delayMilliseconds(100);
+}
+
+void ThreadLookAround(void) {
+    float distance = 0;
+    float max_distance = 0;
+    MovementDirection best_dir = M_STOP;
+
+    while (true) {
+        distance = measureDistanceAvg();
+        continue;
+        int i = 0;
+        distance = 0;
+        best_dir = M_STOP;
+        max_distance = 0;
+        for (i = 0; i < sizeof(looking_directions); i++) {
+            turnServo(looking_directions[i]);
+            delayMilliseconds(100);
+            distance = measureDistanceAvg();
+            if (distance < max_distance) {
+                max_distance = distance;
+                best_dir = movement_directions[i];
+            }
+        }
+
+
+        if (max_distance <= MIN_DIST_TO_TURN) {
+            best_dir = M_BACKWARDS;
+        }
+
+        // char string[32];
+        // snprintf(string, sizeof(string), "BEST DIRECTION: %d with %0.2f cm\r\n", (int) best_dir, max_distance);
+        // UARTSendString(string);
+        // delayMilliseconds(100);
+        ThreadTurnAround(best_dir);
+
+        for (i = sizeof(looking_directions) - 1; i >= 0; i--) {
+            turnServo(looking_directions[i]);
+            delayMilliseconds(100);
+            distance = measureDistanceAvg();
+            if (distance < max_distance) {
+                max_distance = distance;
+                best_dir = movement_directions[i];
+            }
+        }
+
+
+        if (max_distance <= MIN_DIST_TO_TURN) {
+            best_dir = M_BACKWARDS;
+        }
+
+        // char string[32];
+        // snprintf(string, sizeof(string), "BEST DIRECTION: %d with %0.2f cm\r\n", (int) best_dir, max_distance);
+        // UARTSendString(string);
+        // delayMilliseconds(100);
+        ThreadTurnAround(best_dir);
+    }
+}
+
+int main(void) {
+    uint32_t echo_duration;
+    float distance;
+
+    SysClock = SysCtlClockFreqSet((SYSCTL_XTAL_25MHZ | SYSCTL_OSC_MAIN | SYSCTL_USE_PLL | SYSCTL_CFG_VCO_240), 120000000);
+
+    initHCSR04();
+    SetupUart(SysClock);
+    servoSetup();
+    movementInit();
+	
+    UARTSendString("HELLO\r\n");
+
+
+    ThreadLookAround();
+
+    while (1) { }
+}

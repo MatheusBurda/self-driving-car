@@ -1,5 +1,16 @@
 {
     "C_Cpp.default.includePath": [
         "C:\\ti\\TivaWare_C_Series-2.2.0.295"
-    ]
+    ],
+    "files.associations": {
+        "gpio.h": "c",
+        "movement.h": "c",
+        "hcsr04.h": "c",
+        "global_variables.h": "c",
+        "timer.h": "c",
+        "uart.h": "c",
+        "pin_map.h": "c",
+        "hw_memmap.h": "c",
+        "sysctl.h": "c"
+    }
 }

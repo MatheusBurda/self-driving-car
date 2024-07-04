@@ -38,24 +38,8 @@ void servoSetup(void) {
     GPIOPinTypeGPIOOutput(GPIO_PORTG_BASE, GPIO_PIN_1);
 }
 
-void servo0deg(void){
-    pulseWidth = 2;
-}
-
-void servo45deg(void){
-    pulseWidth = 4;
-}
-
-void servo90deg(void){
-    pulseWidth = 6;
-}
-
-void servo135deg(void){
-    pulseWidth = 8;
-}
-
-void servo180deg(void){
-    pulseWidth = 10;
+void turnServo(enum LookingDirection direction) {
+    pulseWidth = (uint32_t) direction;
 }
 
 void disableServo(void) {
