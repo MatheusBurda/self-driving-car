@@ -11,12 +11,17 @@
 #include "driverlib/interrupt.h"
 #include "driverlib/timer.h"
 
+typedef enum LookingDirection {
+    L_FORWARD = 6,
+    L_DIAGONAL_LEFT = 8, 
+    L_LEFT = 10,
+    L_DIAGONAL_RIGHT = 4, 
+    L_RIGHT = 2
+}LookingDirection;
+
+extern void turnServo(enum LookingDirection direction);
+
 extern void servoSetup(void);
-extern void servo0deg(void);
-extern void servo45deg(void);
-extern void servo90deg(void);
-extern void servo135deg(void);
-extern void servo180deg(void);
 extern void disableServo(void);
 extern void enableServo(void);
 
