@@ -55,7 +55,7 @@ void servo135deg(void){
 }
 
 void servo180deg(void){
-    pulseWidth = 10;
+    pulseWidth = 10 ;
 }
 
 void disableServo(void) {
