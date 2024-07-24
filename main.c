@@ -5,6 +5,8 @@
 #include "inc/hw_memmap.h"
 #include "inc/hw_types.h"
 #include "inc/hw_gpio.h"
+#include "inc/hw_ints.h"
+#include "cmsis_os2.h"
 #include "driverlib/sysctl.h"
 #include "driverlib/gpio.h"
 #include "driverlib/timer.h"
@@ -12,8 +14,6 @@
 #include "driverlib/pin_map.h"
 #include "driverlib/uart.h"
 #include "utils/uartstdio.h"
-#include "inc/hw_ints.h"
-#include "cmsis_os2.h"
 
 #include "src/uart/uart.h"
 #include "src/global_variables.h"
@@ -21,135 +21,147 @@
 #include "src/movement/movement.h"
 #include "src/servo/servo.h"
 
+
 uint32_t SysClock = 0;
 #define MIN_DIST_TO_TURN 10
+MovementDirection bestDir = M_BACKWARDS;
 
 LookingDirection looking_directions[] = {L_LEFT, L_DIAGONAL_LEFT, L_FORWARD, L_DIAGONAL_RIGHT, L_RIGHT};
 MovementDirection movement_directions[] = {M_LEFT, M_DIAGONAL_LEFT, M_FORWARD, M_DIAGONAL_RIGHT, M_RIGHT};
 char *movement_directions_str[] = {"M_LEFT", "M_DIAGONAL_LEFT", "M_FORWARD", "M_DIAGONAL_RIGHT", "M_RIGHT"};
 
-osMessageQueueId_t distanceQueue;
-MovementDirection bestDir = M_BACKWARDS ;
 
 void ThreadMeasureDistanceAvg(void *argument) {
     float average;
+    
     while (1) {
         average = 0;
         for (int i = 0; i < 10; i++) {
             Trigger_Ultrasonic();
             average += Measure_Echo();
-            osDelay(50);
+            osDelay(10);
         }
         average /= 10;
 
-        // char string[32];
-        // snprintf(string, sizeof(string), "Distance: %.2f cm\r\n", average);
-        // UARTSendString(string);
+        char string[32];
+        snprintf(string, sizeof(string), "Distance: %.2f cm\r\n", average);
+        UARTSendString(string);
 
         osMessageQueuePut(distanceQueue, &average, 0, osWaitForever);
 
-        osDelay(100);
     }
 }
 
+
 void ThreadTurnAround(void *argument) {
+    uint32_t delay = 0;
     while (1) {
-        // char string[32];
-        // snprintf(string, sizeof(string), "MOVING %d %s\r\n", (int)bestDir, movement_directions_str[bestDir]);
-        // UARTSendString(string);
+        delay = 100;
+        
+        osMutexAcquire(bestDirMutex, osWaitForever);
         switch (bestDir) {
             case M_FORWARD:
                 moveForward();
-                osDelay(500);
+                delay += 500;
                 break;
             case M_BACKWARDS:
                 moveBackwards();
-                osDelay(500);
+                delay += 500;
                 break;
             case M_DIAGONAL_LEFT:
                 turnLeft();
-                osDelay(250);
+                delay += 250;
                 break;
             case M_LEFT:
                 turnLeft();
-                osDelay(500);
+                delay += 500;
                 break;
             case M_DIAGONAL_RIGHT:
                 turnRight();
-                osDelay(250);
+                delay += 250;
                 break;
             case M_RIGHT:
                 turnRight();
-                osDelay(500);
+                delay += 500;
                 break;
             default:
                 stop();
-                osDelay(500);
+                delay += 500;
                 break;
         }
+        osMutexRelease(bestDirMutex);
 
-        osDelay(100);
+        osDelay(delay);
+
     }
 }
+
 
 void ThreadLookAround(void *argument) {
     float distance;
     float max_distance;
+    MovementDirection currentBestDir = M_STOP;
 
     while (1) {
         distance = 0;
-        bestDir = M_STOP;
+        currentBestDir = M_STOP;
         max_distance = 0;
 
         for (int i = 0; i < sizeof(looking_directions) / sizeof(looking_directions[0]); i++) {
             turnServo(looking_directions[i]);
-            osDelay(300);
+            osDelay(200);
             if (osMessageQueueGet(distanceQueue, &distance, NULL, osWaitForever) == osOK) {
                 if (distance > max_distance) {
                     max_distance = distance;
-                    bestDir = movement_directions[i];
+                    currentBestDir = movement_directions[i];
                 }
             }
         }
 
         if (max_distance <= MIN_DIST_TO_TURN) {
-            bestDir = M_BACKWARDS;
+            currentBestDir = M_BACKWARDS;
         }
 
         osDelay(100); 
 
         for (int i = sizeof(looking_directions) / sizeof(looking_directions[0]) - 1; i >= 0; i--) {
             turnServo(looking_directions[i]);
-            osDelay(300);
+            osDelay(200);
             if (osMessageQueueGet(distanceQueue, &distance, NULL, osWaitForever) == osOK) {
                 if (distance > max_distance) {
                     max_distance = distance;
-                    bestDir = movement_directions[i];
+                    currentBestDir = movement_directions[i];
                 }
             }
         }
 
         if (max_distance <= MIN_DIST_TO_TURN) {
-            bestDir = M_BACKWARDS;
+            currentBestDir = M_BACKWARDS;
         }
+
+        osMutexAcquire(bestDirMutex, osWaitForever);
+        bestDir = currentBestDir;
+        osMutexRelease(bestDirMutex);
 
         osDelay(100); 
     }
 }
 
+
 int main(void) {
     SysClock = SysCtlClockFreqSet((SYSCTL_XTAL_25MHZ | SYSCTL_OSC_MAIN | SYSCTL_USE_PLL | SYSCTL_CFG_VCO_240), 120000000);
 
     initHCSR04();
-    //SetupUart(SysClock);
+    SetupUart(SysClock);
     servoSetup();
     movementInit();
     
-    //UARTSendString("HELLO\r\n");
+    UARTSendString("HELLO\r\n");
 
     osKernelInitialize();
 
-    distanceQueue = osMessageQueueNew(10, sizeof(float), NULL);
+    distanceQueue = osMessageQueueNew(50, sizeof(float), NULL);
+    bestDirMutex = osMutexNew(NULL);
 
     osThreadNew(ThreadMeasureDistanceAvg, NULL, NULL);
     osThreadNew(ThreadLookAround, NULL, NULL);
