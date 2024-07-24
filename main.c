@@ -22,8 +22,12 @@
 #include "src/servo/servo.h"
 
 
-uint32_t SysClock = 0;
 #define MIN_DIST_TO_TURN 10
+
+uint32_t SysClock = 0;
+int bestDirMutex = 0;
+int distanceMutex = 0;
+float distance = 0;
 MovementDirection bestDir = M_BACKWARDS;
 
 LookingDirection looking_directions[] = {L_LEFT, L_DIAGONAL_LEFT, L_FORWARD, L_DIAGONAL_RIGHT, L_RIGHT};
@@ -47,7 +51,9 @@ void ThreadMeasureDistanceAvg(void *argument) {
         snprintf(string, sizeof(string), "Distance: %.2f cm\r\n", average);
         UARTSendString(string);
 
-        osMessageQueuePut(distanceQueue, &average, 0, osWaitForever);
+        osMutexAcquire(distanceMutex, osWaitForever);
+        distance = average;
+        osMutexRelease(distanceMutex);
 
     }
 }
@@ -98,41 +104,43 @@ void ThreadTurnAround(void *argument) {
 
 
 void ThreadLookAround(void *argument) {
-    float distance;
     float max_distance;
     MovementDirection currentBestDir = M_STOP;
 
     while (1) {
-        distance = 0;
         currentBestDir = M_STOP;
         max_distance = 0;
 
         for (int i = 0; i < sizeof(looking_directions) / sizeof(looking_directions[0]); i++) {
             turnServo(looking_directions[i]);
             osDelay(200);
-            if (osMessageQueueGet(distanceQueue, &distance, NULL, osWaitForever) == osOK) {
-                if (distance > max_distance) {
-                    max_distance = distance;
-                    currentBestDir = movement_directions[i];
-                }
+            osMutexAcquire(distanceMutex, osWaitForever);
+            if (distance > max_distance) {
+                max_distance = distance;
+                currentBestDir = movement_directions[i];
             }
+            osMutexRelease(distanceMutex);
         }
 
         if (max_distance <= MIN_DIST_TO_TURN) {
             currentBestDir = M_BACKWARDS;
         }
 
+        osMutexAcquire(bestDirMutex, osWaitForever);
+        bestDir = currentBestDir;
+        osMutexRelease(bestDirMutex);
+
         osDelay(100); 
 
         for (int i = sizeof(looking_directions) / sizeof(looking_directions[0]) - 1; i >= 0; i--) {
             turnServo(looking_directions[i]);
             osDelay(200);
-            if (osMessageQueueGet(distanceQueue, &distance, NULL, osWaitForever) == osOK) {
-                if (distance > max_distance) {
-                    max_distance = distance;
-                    currentBestDir = movement_directions[i];
-                }
+            osMutexAcquire(distanceMutex, osWaitForever);
+            if (distance > max_distance) {
+                max_distance = distance;
+                currentBestDir = movement_directions[i];
             }
+            osMutexRelease(distanceMutex);
         }
 
         if (max_distance <= MIN_DIST_TO_TURN) {
@@ -160,8 +168,8 @@ int main(void) {
 
     osKernelInitialize();
 
-    distanceQueue = osMessageQueueNew(50, sizeof(float), NULL);
     bestDirMutex = osMutexNew(NULL);
+    distanceMutex = osMutexNew(NULL);
 
     osThreadNew(ThreadMeasureDistanceAvg, NULL, NULL);
     osThreadNew(ThreadLookAround, NULL, NULL);
