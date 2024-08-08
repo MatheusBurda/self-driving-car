@@ -6,7 +6,7 @@ float measureDistanceAvg(void) {
     float average = 0;
     int i = 0;
     for (i = 0; i < 10; i++) {
-        Trigger_Ultrasonic();
+        // Trigger_Ultrasonic();
         average += Measure_Echo();
         osDelay(1);
     }
@@ -44,7 +44,7 @@ void initHCSR04(void) {
     
     TimerConfigure(TIMER1_BASE, TIMER_CFG_PERIODIC_UP);
     TimerLoadSet(TIMER1_BASE, TIMER_A,  0xFFFFFFFF);
-    IntEnable(INT_TIMER1A);
+    // IntEnable(INT_TIMER1A);
     TimerEnable(TIMER1_BASE, TIMER_A);
 }
 
@@ -57,15 +57,17 @@ void Trigger_Ultrasonic(void) {
 }
 
 float Measure_Echo(void) {
+    Trigger_Ultrasonic();
+    
+    // reset timer
+    TimerLoadSet(TIMER1_BASE, TIMER_A,  0xFFFFFFFF);
+
     uint32_t start_time, end_time;
     while (GPIOPinRead(ECHO_PORT, ECHO_PIN) == 0);
     start_time = TimerValueGet(TIMER1_BASE, TIMER_A);
 
     while (GPIOPinRead(ECHO_PORT, ECHO_PIN) != 0);
     end_time = TimerValueGet(TIMER1_BASE, TIMER_A);
-
-    // reset timer
-    TimerLoadSet(TIMER1_BASE, TIMER_A,  0xFFFFFFFF);
 
     return  ((end_time - start_time) / 200.0) * 0.0343;
 }

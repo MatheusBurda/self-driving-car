@@ -23,10 +23,11 @@
 
 
 #define MIN_DIST_TO_TURN 10
+#define MIN_DIST_TO_FORWARD 30
 
 uint32_t SysClock = 0;
-int bestDirMutex = 0;
-int distanceMutex = 0;
+osMutexId_t bestDirMutex = 0;
+osMutexId_t distanceMutex = 0;
 float distance = 0;
 MovementDirection bestDir = M_BACKWARDS;
 
@@ -37,19 +38,20 @@ char *movement_directions_str[] = {"M_LEFT", "M_DIAGONAL_LEFT", "M_FORWARD", "M_
 
 void ThreadMeasureDistanceAvg(void *argument) {
     float average;
+    float measurement = 0;
     
     while (1) {
         average = 0;
         for (int i = 0; i < 10; i++) {
-            Trigger_Ultrasonic();
-            average += Measure_Echo();
-            osDelay(10);
+            measurement = Measure_Echo();
+            while (measurement < 2 || measurement > 400) { // range between 2 and 400
+                measurement = Measure_Echo();
+            }
+
+            average += measurement;
+            // osDelay(50);
         }
         average /= 10;
-
-        char string[32];
-        snprintf(string, sizeof(string), "Distance: %.2f cm\r\n", average);
-        UARTSendString(string);
 
         osMutexAcquire(distanceMutex, osWaitForever);
         distance = average;
@@ -110,11 +112,15 @@ void ThreadLookAround(void *argument) {
     while (1) {
         currentBestDir = M_STOP;
         max_distance = 0;
+        float distances[sizeof(looking_directions) / sizeof(looking_directions[0])] = {0};
 
         for (int i = 0; i < sizeof(looking_directions) / sizeof(looking_directions[0]); i++) {
             turnServo(looking_directions[i]);
-            osDelay(200);
             osMutexAcquire(distanceMutex, osWaitForever);
+            char string[32];
+            snprintf(string, sizeof(string), "Dir: %d, Distance: %.2f cm\r\n", i, distance);
+            UARTSendString(string);
+            distances[i] = distance;
             if (distance > max_distance) {
                 max_distance = distance;
                 currentBestDir = movement_directions[i];
@@ -134,8 +140,10 @@ void ThreadLookAround(void *argument) {
 
         for (int i = sizeof(looking_directions) / sizeof(looking_directions[0]) - 1; i >= 0; i--) {
             turnServo(looking_directions[i]);
-            osDelay(200);
             osMutexAcquire(distanceMutex, osWaitForever);
+            char string[32];
+            snprintf(string, sizeof(string), "Dir: %d, Distance: %.2f cm\r\n", i, distance);
+            UARTSendString(string);
             if (distance > max_distance) {
                 max_distance = distance;
                 currentBestDir = movement_directions[i];
@@ -165,8 +173,27 @@ int main(void) {
     movementInit();
     
     UARTSendString("HELLO\r\n");
-
     osKernelInitialize();
+
+    // moveBackwards();
+    // osDelay(10000);
+    // stop();
+    // osDelay(10000);
+    // moveForward(); 
+    // osDelay(10000);
+    // stop();
+    // osDelay(10000);
+    // turnLeft();
+    // osDelay(10000);
+    // stop();
+    // osDelay(10000);
+    // turnRight(); 
+    // osDelay(120000000);
+    // stop();
+    // osDelay(1000000);
+    // stop();
+    // stop();
+    // osDelay(10000);
 
     bestDirMutex = osMutexNew(NULL);
     distanceMutex = osMutexNew(NULL);

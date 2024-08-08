@@ -26,21 +26,15 @@ int main(void) {
     servoSetup();
 
     while (1) {
-        turnServo(RIGHT);
+        turnServo(L_RIGHT);
         SysCtlDelay(SysClock);
-        turnServo(DIAGONAL_RIGHT)
+        turnServo(L_DIAGONAL_RIGHT);
         SysCtlDelay(SysClock);
-        turnServo(FORWARD);
+        turnServo(L_FORWARD);
         SysCtlDelay(SysClock);
-        turnServo(DIAGONAL_LEFT);
+        turnServo(L_DIAGONAL_LEFT);
         SysCtlDelay(SysClock);
-        servo180deg();
-        SysCtlDelay(SysClock);
-        servo135deg();
-        SysCtlDelay(SysClock);
-        servo90deg();
-        SysCtlDelay(SysClock);
-        servo45deg();
+        turnServo(L_LEFT);
         SysCtlDelay(SysClock);
     }
 }

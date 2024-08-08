@@ -39,11 +39,16 @@ void servoSetup(void) {
 }
 
 void turnServo(enum LookingDirection direction) {
+    enableServo();
     pulseWidth = (uint32_t) direction;
+    osDelay(3000);
+    disableServo();
+    osDelay(1000);
 }
 
 void disableServo(void) {
 	TimerDisable(TIMER0_BASE, TIMER_A);
+    GPIOPinWrite(GPIO_PORTG_BASE, GPIO_PIN_1, 0);
 }
 
 void enableServo(void) {
