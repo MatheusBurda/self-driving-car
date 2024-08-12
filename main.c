@@ -31,8 +31,9 @@ osMutexId_t distanceMutex = 0;
 float distance = 0;
 MovementDirection bestDir = M_BACKWARDS;
 
-LookingDirection looking_directions[] = {L_LEFT, L_DIAGONAL_LEFT, L_FORWARD, L_DIAGONAL_RIGHT, L_RIGHT};
-MovementDirection movement_directions[] = {M_LEFT, M_DIAGONAL_LEFT, M_FORWARD, M_DIAGONAL_RIGHT, M_RIGHT};
+LookingDirection looking_directions[] =            {L_LEFT,           L_DIAGONAL_LEFT, L_FORWARD,   L_DIAGONAL_RIGHT, L_RIGHT};
+MovementDirection movement_directions[] =          {M_LEFT,           M_DIAGONAL_LEFT, M_FORWARD,   M_DIAGONAL_RIGHT, M_RIGHT};
+MovementDirection reversed_movement_directions[] = {M_DIAGONAL_RIGHT, M_RIGHT,         M_BACKWARDS, M_LEFT,           M_DIAGONAL_LEFT};
 char *movement_directions_str[] = {"M_LEFT", "M_DIAGONAL_LEFT", "M_FORWARD", "M_DIAGONAL_RIGHT", "M_RIGHT"};
 
 
@@ -44,7 +45,7 @@ void ThreadMeasureDistanceAvg(void *argument) {
         average = 0;
         for (int i = 0; i < 10; i++) {
             measurement = Measure_Echo();
-            while (measurement < 2 || measurement > 400) { // range between 2 and 400
+            while (measurement < 2 || measurement > 400) { // sensor ranges between 2 and 400
                 measurement = Measure_Echo();
             }
 
@@ -106,30 +107,29 @@ void ThreadTurnAround(void *argument) {
 
 
 void ThreadLookAround(void *argument) {
-    float max_distance;
+    float min_distance;
     MovementDirection currentBestDir = M_STOP;
 
     while (1) {
         currentBestDir = M_STOP;
-        max_distance = 0;
-        float distances[sizeof(looking_directions) / sizeof(looking_directions[0])] = {0};
+        min_distance = 400;
 
         for (int i = 0; i < sizeof(looking_directions) / sizeof(looking_directions[0]); i++) {
             turnServo(looking_directions[i]);
+
             osMutexAcquire(distanceMutex, osWaitForever);
+
             char string[32];
             snprintf(string, sizeof(string), "Dir: %d, Distance: %.2f cm\r\n", i, distance);
             UARTSendString(string);
-            distances[i] = distance;
-            if (distance > max_distance) {
-                max_distance = distance;
-                currentBestDir = movement_directions[i];
+            
+            if (distance < min_distance) {
+                min_distance = distance;
+                // turns to the oposite side 
+                currentBestDir = reversed_movement_directions[i];
             }
-            osMutexRelease(distanceMutex);
-        }
 
-        if (max_distance <= MIN_DIST_TO_TURN) {
-            currentBestDir = M_BACKWARDS;
+            osMutexRelease(distanceMutex);
         }
 
         osMutexAcquire(bestDirMutex, osWaitForever);
@@ -140,19 +140,20 @@ void ThreadLookAround(void *argument) {
 
         for (int i = sizeof(looking_directions) / sizeof(looking_directions[0]) - 1; i >= 0; i--) {
             turnServo(looking_directions[i]);
+
             osMutexAcquire(distanceMutex, osWaitForever);
+
             char string[32];
             snprintf(string, sizeof(string), "Dir: %d, Distance: %.2f cm\r\n", i, distance);
             UARTSendString(string);
-            if (distance > max_distance) {
-                max_distance = distance;
-                currentBestDir = movement_directions[i];
-            }
-            osMutexRelease(distanceMutex);
-        }
 
-        if (max_distance <= MIN_DIST_TO_TURN) {
-            currentBestDir = M_BACKWARDS;
+            if (distance > min_distance) {
+                min_distance = distance;
+                // turns to the oposite side 
+                currentBestDir = reversed_movement_directions[i];
+            }
+
+            osMutexRelease(distanceMutex);
         }
 
         osMutexAcquire(bestDirMutex, osWaitForever);
@@ -161,6 +162,7 @@ void ThreadLookAround(void *argument) {
 
         osDelay(100); 
     }
+
 }
 
 
@@ -175,26 +177,6 @@ int main(void) {
     UARTSendString("HELLO\r\n");
     osKernelInitialize();
 
-    // moveBackwards();
-    // osDelay(10000);
-    // stop();
-    // osDelay(10000);
-    // moveForward(); 
-    // osDelay(10000);
-    // stop();
-    // osDelay(10000);
-    // turnLeft();
-    // osDelay(10000);
-    // stop();
-    // osDelay(10000);
-    // turnRight(); 
-    // osDelay(120000000);
-    // stop();
-    // osDelay(1000000);
-    // stop();
-    // stop();
-    // osDelay(10000);
-
     bestDirMutex = osMutexNew(NULL);
     distanceMutex = osMutexNew(NULL);
 
@@ -204,5 +186,5 @@ int main(void) {
 
     osKernelStart();
 
-    while (1) { }
+    while (1) {}
 }
