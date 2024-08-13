@@ -50,7 +50,7 @@ void ThreadMeasureDistanceAvg(void *argument) {
             }
 
             average += measurement;
-            // osDelay(50);
+            osDelay(50);
         }
         average /= 10;
 
@@ -110,35 +110,33 @@ void ThreadTurnAround(void *argument) {
 
 
 void ThreadLookAround(void *argument) {
-    float min_distance;
+    float current_distance = 0;
     float max_distance = 0;
     MovementDirection currentBestDir = M_STOP;
 
     while (1) {
         currentBestDir = M_STOP;
-        min_distance = 400;
 
         turnServo(L_FORWARD);
+        osMutexAcquire(bestDirMutex, osWaitForever);
+        bestDir = M_FORWARD;
+        osMutexRelease(bestDirMutex);
 
-        osMutexAcquire(distanceMutex, osWaitForever);
-        if (distance > MIN_DIST_TO_TURN) {
-           
+        do {
+            osMutexAcquire(distanceMutex, osWaitForever);
+            current_distance = distance;
             osMutexRelease(distanceMutex);
-            osMutexAcquire(bestDirMutex, osWaitForever);
-            bestDir = M_FORWARD;
-            osMutexRelease(bestDirMutex);
+
             osDelay(5000);
-            continue;
-        }
-        osMutexRelease(distanceMutex);
+        } while (current_distance > MIN_DIST_TO_TURN);
 
         osMutexAcquire(bestDirMutex, osWaitForever);
         bestDir = M_STOP;
         osMutexRelease(bestDirMutex);
+
         osDelay(100);
 
-
-        for (int i = 0; i < sizeof(looking_directions) / sizeof(looking_directions[0]); i++) {
+        for (int i = 0; i < sizeof(looking_directions)/sizeof(looking_directions[0]); i++) {
             turnServo(looking_directions[i]);
 
             osMutexAcquire(distanceMutex, osWaitForever);
@@ -163,7 +161,11 @@ void ThreadLookAround(void *argument) {
         bestDir = currentBestDir;
         osMutexRelease(bestDirMutex);
 
-        osDelay(100); 
+        osDelay(200); 
+
+        osMutexAcquire(bestDirMutex, osWaitForever);
+        bestDir = M_STOP;
+        osMutexRelease(bestDirMutex);
 
         // for (int i = sizeof(looking_directions) / sizeof(looking_directions[0]) - 1; i >= 0; i--) {
         //     turnServo(looking_directions[i]);
