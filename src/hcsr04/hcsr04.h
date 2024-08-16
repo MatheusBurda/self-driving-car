@@ -24,12 +24,6 @@
 
 extern float measureDistanceAvg(void);
 
-// extern void delayMicroseconds(uint32_t us);
-
-// extern void delayMilliseconds(uint32_t ms);
-
-// extern  void delaySeconds(uint32_t s);
-
 extern  void initHCSR04(void);
 
 extern  void Trigger_Ultrasonic(void);

@@ -10,5 +10,4 @@ void UARTIntHandler(void);
 void SetupUart(uint32_t SysClock);
 void UARTSendString(const char *str);
 
-
 #endif

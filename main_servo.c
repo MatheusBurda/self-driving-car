@@ -18,6 +18,10 @@
 #include "src/uart/uart.h"
 #include "src/servo/servo.h"
 
+/**
+ * Aquivo para testes das funções de rotação do servo motor
+ */
+
 uint32_t SysClock = 0;
 
 int main(void) {
